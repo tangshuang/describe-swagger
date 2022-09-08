@@ -31,137 +31,137 @@ function parseSwaggerSchemaToText(schema) {
   });
 
   return results;
-}
 
-function parseRequest(parameters, definitions) {
-  const headers = [];
-  let data = null;
-  const searchQuery = [];
-  const pathParams = [];
+  function parseRequest(parameters, definitions) {
+    const headers = [];
+    let data = null;
+    const searchQuery = [];
+    const pathParams = [];
 
-  parameters.forEach((item) => {
-    const { in: place, ...others } = item;
-    if (place === 'query') {
-      searchQuery.push(others);
-    } else if (place === 'body') {
-      const { schema } = others;
-      const body = parseJsonSchema(schema, definitions);
-      // 只会有一个
-      data = body;
-    } else if (place === 'header') {
-      headers.push(others);
-    } else if (place === 'path') {
-      pathParams.push(others);
-    }
-  });
+    parameters.forEach((item) => {
+      const { in: place, ...others } = item;
+      if (place === 'query') {
+        searchQuery.push(others);
+      } else if (place === 'body') {
+        const { schema } = others;
+        const body = parseJsonSchema(schema, definitions);
+        // 只会有一个
+        data = body;
+      } else if (place === 'header') {
+        headers.push(others);
+      } else if (place === 'path') {
+        pathParams.push(others);
+      }
+    });
 
-  return {
-    headers: parseParams(headers),
-    data,
-    searchQuery: parseParams(searchQuery),
-    pathParams: parseParams(pathParams),
-  };
-}
+    return {
+      headers: parseParams(headers),
+      data,
+      searchQuery: parseParams(searchQuery),
+      pathParams: parseParams(pathParams),
+    };
 
-function parseResponse(responses, definitions) {
-  const success = responses['200'];
-  const { schema } = success;
-  const body = parseJsonSchema(schema, definitions);
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  return body;
-}
+    function parseParams(params) {
+      const lines = [];
+      params.forEach((item) => {
+        const { name, description, required, type, items, format } = item;
+        if (description) {
+          const line = `${indent(1)}// ${description}`;
+          lines.push(line);
+        }
 
-function parseJsonSchema(jsonSchema, definitions, deep = 0, atKey = '', parentVO = []) {
-  const { type, description, format, originalRef } = jsonSchema;
-  let text = '';
+        let text = format || type;
+        if (type === 'array' && items) {
+          const { type } = items;
+          text = type ? `[${type}]` : text;
+        }
 
-  if (description && deep) {
-    text += `${atKey ? indent(deep) : ''}// ${description}\n${atKey ? '' : indent(deep)}`;
-  }
-  if (originalRef && deep) {
-    text += `${atKey ? `${indent(deep)}` : ''}// @((${originalRef}))\n${atKey ? '' : indent(deep)}`;
-  }
-
-  if (atKey) {
-    text += `${indent(deep)}${atKey}: `;
-  }
-
-  if (type === 'object') {
-    const { properties } = jsonSchema;
-    if (!properties) {
-      text += `{}`;
-    } else {
-      const keys = Object.keys(properties);
-      text += '{';
-      const inners = [];
-      keys.forEach((key) => {
-        const prop = properties[key];
-        inners.push(parseJsonSchema(prop, definitions, deep + 1, key, parentVO));
+        const line = `${indent(1)}${name}${required ? '' : '?'}: ${text}`;
+        lines.push(line);
       });
-      if (inners.length) {
-        text += '\n';
-        text += inners.map(item => item.trimEnd()).join('\n');
-        text += '\n';
+      if (!lines.length) {
+        return null;
       }
-      text += `${indent(deep)}}\n`;
+      return `{\n${lines.join('\n')}\n}`;
     }
-  } else if (type === 'array') {
-    const { items } = jsonSchema;
-    const itemText = parseJsonSchema(items, definitions, deep + 1, 0, parentVO);
-    const hasBreak = itemText.indexOf('\n') > -1;
-    if (hasBreak) {
-      text += `[\n${indent(deep + 1)}${itemText.trimEnd()}\n${indent(deep)}]\n`;
-    } else {
-      text += `[${itemText.trim()}]\n`;
+  }
+
+  function parseResponse(responses, definitions) {
+    const success = responses['200'];
+    const { schema } = success;
+    const body = parseJsonSchema(schema, definitions);
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    return body;
+  }
+
+  function parseJsonSchema(jsonSchema, definitions, deep = 0, atKey = '', parentVO = []) {
+    const { type, description, format, originalRef } = jsonSchema;
+    let text = '';
+
+    if (description && deep) {
+      text += `${atKey ? indent(deep) : ''}// ${description}\n${atKey ? '' : indent(deep)}`;
     }
-  } else if (type) {
-    text += format || type;
-  } else if (originalRef) {
-    const def = definitions[originalRef];
-    // 避免循环嵌套
-    if (parentVO.indexOf(originalRef) > -1) {
-      text += `@@${originalRef}))`;
-    } else {
-      if (def) {
-        text += parseJsonSchema(def, definitions, deep, atKey === 0 ? 0 : '', [...parentVO, originalRef]);
+    if (originalRef && deep) {
+      text += `${atKey ? `${indent(deep)}` : ''}// @((${originalRef}))\n${atKey ? '' : indent(deep)}`;
+    }
+
+    if (atKey) {
+      text += `${indent(deep)}${atKey}: `;
+    }
+
+    if (type === 'object') {
+      const { properties } = jsonSchema;
+      if (!properties) {
+        text += `{}`;
       } else {
-        text += null;
+        const keys = Object.keys(properties);
+        text += '{';
+        const inners = [];
+        keys.forEach((key) => {
+          const prop = properties[key];
+          inners.push(parseJsonSchema(prop, definitions, deep + 1, key, parentVO));
+        });
+        if (inners.length) {
+          text += '\n';
+          text += inners.map(item => item.trimEnd()).join('\n');
+          text += '\n';
+        }
+        text += `${indent(deep)}}\n`;
+      }
+    } else if (type === 'array') {
+      const { items } = jsonSchema;
+      const itemText = parseJsonSchema(items, definitions, deep + 1, 0, parentVO);
+      const hasBreak = itemText.indexOf('\n') > -1;
+      if (hasBreak) {
+        text += `[\n${indent(deep + 1)}${itemText.trimEnd()}\n${indent(deep)}]\n`;
+      } else {
+        text += `[${itemText.trim()}]\n`;
+      }
+    } else if (type) {
+      text += format || type;
+    } else if (originalRef) {
+      const def = definitions[originalRef];
+      // 避免循环嵌套
+      if (parentVO.indexOf(originalRef) > -1) {
+        text += `@@${originalRef}))`;
+      } else {
+        if (def) {
+          text += parseJsonSchema(def, definitions, deep, atKey === 0 ? 0 : '', [...parentVO, originalRef]);
+        } else {
+          text += null;
+        }
       }
     }
+    return text;
   }
-  return text;
-}
 
-function parseParams(params) {
-  const lines = [];
-  params.forEach((item) => {
-    const { name, description, required, type, items, format } = item;
-    if (description) {
-      const line = `${indent(1)}// ${description}`;
-      lines.push(line);
-    }
-
-    let text = format || type;
-    if (type === 'array' && items) {
-      const { type } = items;
-      text = `[${type}]` || text;
-    }
-
-    const line = `${indent(1)}${name}${required ? '' : '?'}: ${text}`;
-    lines.push(line);
-  });
-  if (!lines.length) {
-    return null;
+  function indent(deep) {
+    const indent = new Array(deep * 4).fill(' ').join('');
+    return indent;
   }
-  return `{\n${lines.join('\n')}\n}`;
 }
 
-function indent(deep) {
-  const indent = new Array(deep * 4).fill(' ').join('');
-  return indent;
-}
-
-function genSwaggerMdContents(json) {
+function parseSwaggerSchemaToMarkdown(json) {
   const apis = parseSwaggerSchemaToText(json);
   const categories = {};
   apis.forEach((item) => {
@@ -231,7 +231,128 @@ function genSwaggerMdContents(json) {
   return apiContents;
 }
 
+function parseSwaggerSchemaToJson(schema) {
+  const { basePath, paths, definitions } = schema;
+  const uris = Object.keys(paths);
+
+  const results = {};
+
+  uris.forEach((uri) => {
+    const url = `${basePath}${uri}`;
+    const items = paths[uri];
+    const methods = Object.keys(items);
+
+    methods.forEach((method) => {
+      const item = items[method];
+      const { parameters = [], responses } = item;
+
+      const request = parseRequest(parameters, definitions);
+      const response = parseResponse(responses, definitions);
+
+      results[`${method} ${url}`] = {
+        ...request,
+        response,
+      }
+    });
+  });
+
+  return results;
+
+  function parseRequest(parameters, definitions) {
+    const headers = [];
+    let data = null;
+    const searchQuery = [];
+    const pathParams = [];
+
+    parameters.forEach((item) => {
+      const { in: place, ...others } = item;
+      if (place === 'query') {
+        searchQuery.push(others);
+      } else if (place === 'body') {
+        const { schema } = others;
+        const body = parseJsonSchema(schema, definitions);
+        // 只会有一个
+        data = body;
+      } else if (place === 'header') {
+        headers.push(others);
+      } else if (place === 'path') {
+        pathParams.push(others);
+      }
+    });
+
+    return {
+      headers: parseParams(headers),
+      data,
+      searchQuery: parseParams(searchQuery),
+      pathParams: parseParams(pathParams),
+    };
+
+    function parseParams(params) {
+      const res = {};
+
+      params.forEach((item) => {
+        const { name, description, required, type, items, format } = item;
+        const key = `${name}${required ? '' : '?'}`;
+
+        let value = format || type;
+        if (type === 'array' && items) {
+          const { type } = items;
+          value = type ? [type] : value;
+        }
+
+        res[key] = value;
+      });
+
+      return res;
+    }
+  }
+
+  function parseResponse(responses, definitions) {
+    const success = responses['200'];
+    const { schema } = success;
+    const body = parseJsonSchema(schema, definitions);
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    return body;
+  }
+
+  function parseJsonSchema(jsonSchema, definitions, parentVO = []) {
+    const { type, format, originalRef } = jsonSchema;
+    if (type === 'object') {
+      const { properties } = jsonSchema;
+      if (!properties) {
+        return {};
+      } else {
+        const keys = Object.keys(properties);
+        const obj = {};
+        keys.forEach((key) => {
+          const prop = properties[key];
+          obj[key] = parseJsonSchema(prop, definitions, parentVO);
+        });
+        return obj;
+      }
+    } else if (type === 'array') {
+      const { items } = jsonSchema;
+      const sub = parseJsonSchema(items, definitions, parentVO);
+      return [sub];
+    } else if (type) {
+      return format || type;
+    } else if (originalRef) {
+      const def = definitions[originalRef];
+      // 避免循环嵌套
+      if (parentVO.indexOf(originalRef) > -1) {
+        return `@@${originalRef}))`;
+      } else {
+        if (def) {
+          return parseJsonSchema(def, definitions, [...parentVO, originalRef]);
+        }
+      }
+    }
+    return null;
+  }
+}
+
 module.exports = {
   parseSwaggerSchemaToText,
-  genSwaggerMdContents,
+  parseSwaggerSchemaToMarkdown,
+  parseSwaggerSchemaToJson,
 };
