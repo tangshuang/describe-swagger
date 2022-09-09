@@ -143,7 +143,7 @@ function parseSwaggerSchemaToText(schema) {
       const def = definitions[originalRef];
       // 避免循环嵌套
       if (parentVO.indexOf(originalRef) > -1) {
-        text += `@@${originalRef}))`;
+        text += `@@((${originalRef}))`;
       } else {
         if (def) {
           text += parseJsonSchema(def, definitions, deep, atKey === 0 ? 0 : '', [...parentVO, originalRef]);
@@ -340,7 +340,7 @@ function parseSwaggerSchemaToJson(schema) {
       const def = definitions[originalRef];
       // 避免循环嵌套
       if (parentVO.indexOf(originalRef) > -1) {
-        return `@@${originalRef}))`;
+        return `@@((${originalRef}))`;
       } else {
         if (def) {
           return parseJsonSchema(def, definitions, [...parentVO, originalRef]);
